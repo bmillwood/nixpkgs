@@ -24,7 +24,6 @@
 , username ? ""
 , token ? "" # get/reset token at https://factorio.com/profile
 , experimental ? false # true means to always use the latest branch
-, keepSrc ? false
 , ...
 } @ args:
 
@@ -70,11 +69,14 @@ let
 
     Note the ultimate "_" is replaced with "-" in the --name arg!
 
-    If you go this route you might want to pass keepSrc to the package.
-    Otherwise it could get GC'd from the nix store and you'd have to redownload
-    it next time the package wants to rebuild to use a newer dependency:
+    If you go this route you might want to tell nix to explicitly hold on to the
+    source tarball. Otherwise it could get GC'd from the nix store and you'd
+    have to redownload it next time the package wants to rebuild to use a newer
+    dependency. E.g. if you're using nixos:
 
-      (factorio.override { keepSrc = true; })
+      system.extraDependencies = [
+        factorio.src
+      ];
   '';
 
   desktopItem = makeDesktopItem {
@@ -179,14 +181,6 @@ let
       patchelf \
         --set-interpreter $(cat $NIX_CC/nix-support/dynamic-linker) \
         $out/bin/factorio
-
-      ${lib.optionalString keepSrc ''
-        # The only purpose of this symlink is to add $src as a runtime
-        # dependency of the derivation, so that it'll be kept until next time we
-        # want to rebuild.
-        mkdir $out/src
-        ln -s $src $out/src/$(basename $src)
-      ''}
     '';
 
     passthru.updateScript =
