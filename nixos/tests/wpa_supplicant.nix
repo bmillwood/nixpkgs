@@ -359,4 +359,38 @@ in
     };
   };
 
+  # Regression test for https://github.com/NixOS/nixpkgs/issues/526488: a
+  # hardened daemon with an extraConfigFile located under /etc/wpa_supplicant
+  # must still start. The file gets a read-only bind mount (BindReadOnlyPaths),
+  # which shadows the writable bind mount of the enclosing /etc/wpa_supplicant
+  # directory; when there are no declarative networks the
+  # `chown -R /etc/wpa_supplicant` ExecStartPre then recurses into the
+  # read-only file and fails with EROFS before wpa_supplicant starts.
+  extraConfigReadOnly = runTest {
+    name = "wpa_supplicant-extra-config-read-only";
+    inherit meta;
+
+    nodes.machine = {
+      networking.wireless = {
+        # the override is needed because the wifi is
+        # disabled with mkVMOverride in qemu-vm.nix.
+        enable = lib.mkOverride 0 true;
+        extraConfigFiles = [ "/etc/wpa_supplicant/wpa_supplicant.conf" ];
+      };
+
+      # The file only has to exist so the BindReadOnlyPaths= source resolves;
+      # its contents are irrelevant to the failure. It must be a regular file
+      # (not an environment.etc symlink into the store), since the failure is
+      # `chown` hitting the read-only bind mount over the file itself.
+      systemd.tmpfiles.rules = [
+        "f /etc/wpa_supplicant/wpa_supplicant.conf 0644 root root -"
+      ];
+    };
+
+    testScript = ''
+      machine.wait_for_unit("multi-user.target")
+      machine.wait_for_unit("wpa_supplicant.service")
+    '';
+  };
+
 }
